@@ -2,7 +2,7 @@ import asyncio
 import logging
 from typing import Dict, List, Callable, Any
 
-from AsyncICT_TradingSystem.domain.ports.EventBus import EventBus
+from domain.ports.EventBus import EventBus
 
 # Basic logger setup
 logger = logging.getLogger(__name__)

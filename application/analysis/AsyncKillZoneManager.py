@@ -4,9 +4,9 @@ import datetime
 from typing import Dict, Set, Any
 import pytz # Dependency to be added to requirements.txt
 
-from AsyncICT_TradingSystem.domain.ports.EventBus import EventBus
-from AsyncICT_TradingSystem.domain.events.KillZoneEvent import KillZoneEvent
-from AsyncICT_TradingSystem.domain.events.MacroTimeEvent import MacroTimeEvent
+from domain.ports.EventBus import EventBus
+from domain.events.KillZoneEvent import KillZoneEvent
+from domain.events.MacroTimeEvent import MacroTimeEvent
 
 # --- Placeholder Definitions ---
 

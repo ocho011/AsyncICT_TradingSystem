@@ -2,8 +2,8 @@ import asyncio
 import logging
 from typing import Optional, Any
 
-from AsyncICT_TradingSystem.domain.ports.EventBus import EventBus
-from AsyncICT_TradingSystem.domain.events.FVGEvent import FVGEvent
+from domain.ports.EventBus import EventBus
+from domain.events.FVGEvent import FVGEvent
 
 # --- Placeholder Definitions ---
 

@@ -5,8 +5,8 @@ from collections import deque
 
 # Import from our new modules
 # Assuming the project root is in the PYTHONPATH
-from AsyncICT_TradingSystem.domain.ports.EventBus import EventBus
-from AsyncICT_TradingSystem.domain.events.MarketEvents import MarketStructureEvent
+from domain.ports.EventBus import EventBus
+from domain.events.MarketEvents import MarketStructureEvent
 
 # --- Placeholder Definitions (to be moved later) ---
 

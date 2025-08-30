@@ -1,8 +1,8 @@
 import asyncio
 from typing import Dict
 
-from AsyncICT_TradingSystem.domain.ports.EventBus import EventBus
-from AsyncICT_TradingSystem.domain.entities.MarketStructure import AsyncMarketStructure
+from domain.ports.EventBus import EventBus
+from domain.entities.MarketStructure import AsyncMarketStructure
 
 class AsyncStructureBreakDetector:
     def __init__(self, event_bus: EventBus): # Depends on the interface

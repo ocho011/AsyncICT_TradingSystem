@@ -3,15 +3,15 @@ import logging
 from typing import Set
 import psutil # Dependency to be added
 
-from AsyncICT_TradingSystem.infrastructure.messaging.EventBus import AsyncEventBus
-from AsyncICT_TradingSystem.application.analysis.AsyncStructureBreakDetector import AsyncStructureBreakDetector
-from AsyncICT_TradingSystem.application.analysis.AsyncOrderBlockDetector import AsyncOrderBlockDetector
-from AsyncICT_TradingSystem.application.analysis.AsyncLiquidityDetector import AsyncLiquidityDetector
-from AsyncICT_TradingSystem.application.analysis.AsyncFVGDetector import AsyncFVGDetector
-from AsyncICT_TradingSystem.application.strategies.AsyncTimeBasedStrategy import AsyncTimeBasedStrategy
-from AsyncICT_TradingSystem.application.orchestration.AsyncStrategyCoordinator import AsyncStrategyCoordinator
-from AsyncICT_TradingSystem.application.execution.AsyncRiskManager import AsyncRiskManager
-from AsyncICT_TradingSystem.infrastructure.binance.AsyncOrderManager import AsyncOrderManager
+from infrastructure.messaging.EventBus import AsyncEventBus
+from application.analysis.AsyncStructureBreakDetector import AsyncStructureBreakDetector
+from application.analysis.AsyncOrderBlockDetector import AsyncOrderBlockDetector
+from application.analysis.AsyncLiquidityDetector import AsyncLiquidityDetector
+from application.analysis.AsyncFVGDetector import AsyncFVGDetector
+from application.strategies.AsyncTimeBasedStrategy import AsyncTimeBasedStrategy
+from application.orchestration.AsyncStrategyCoordinator import AsyncStrategyCoordinator
+from application.execution.AsyncRiskManager import AsyncRiskManager
+from infrastructure.binance.AsyncOrderManager import AsyncOrderManager
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

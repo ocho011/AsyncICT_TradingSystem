@@ -3,8 +3,8 @@ import logging
 from typing import List, Optional, Dict, Set, Any
 
 # Assuming EventBus interface is what we need
-from AsyncICT_TradingSystem.domain.ports.EventBus import EventBus
-from AsyncICT_TradingSystem.domain.events.OrderBlockEvent import OrderBlockEvent
+from domain.ports.EventBus import EventBus
+from domain.events.OrderBlockEvent import OrderBlockEvent
 
 # --- Placeholder Definitions (to be moved or implemented) ---
 

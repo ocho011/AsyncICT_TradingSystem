@@ -4,9 +4,9 @@ import time
 from typing import List, Set, Dict
 from collections import deque
 
-from AsyncICT_TradingSystem.domain.ports.EventBus import EventBus
-from AsyncICT_TradingSystem.domain.entities.OrderBlock import AsyncOrderBlock, Candle, OrderBlockType
-from AsyncICT_TradingSystem.domain.events.OrderBlockEvent import OrderBlockEvent
+from domain.ports.EventBus import EventBus
+from domain.entities.OrderBlock import AsyncOrderBlock, Candle, OrderBlockType
+from domain.events.OrderBlockEvent import OrderBlockEvent
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)

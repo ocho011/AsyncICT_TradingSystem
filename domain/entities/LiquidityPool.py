@@ -2,8 +2,8 @@ import asyncio
 import logging
 from typing import List, Optional
 
-from AsyncICT_TradingSystem.domain.ports.EventBus import EventBus
-from AsyncICT_TradingSystem.domain.events.LiquidityEvent import LiquidityEvent
+from domain.ports.EventBus import EventBus
+from domain.events.LiquidityEvent import LiquidityEvent
 
 # --- Placeholder Definitions ---
 

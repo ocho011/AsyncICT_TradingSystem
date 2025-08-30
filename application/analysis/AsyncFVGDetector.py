@@ -4,9 +4,9 @@ import time
 from typing import List, Set, Dict, Optional
 from collections import deque
 
-from AsyncICT_TradingSystem.domain.ports.EventBus import EventBus
-from AsyncICT_TradingSystem.domain.entities.FairValueGap import AsyncFairValueGap, FVGData
-from AsyncICT_TradingSystem.domain.events.FVGEvent import FVGEvent
+from domain.ports.EventBus import EventBus
+from domain.entities.FairValueGap import AsyncFairValueGap, FVGData
+from domain.events.FVGEvent import FVGEvent
 
 # --- Placeholder Definitions ---
 

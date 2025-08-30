@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from AsyncICT_TradingSystem.domain.ports.EventBus import EventBus
+from domain.ports.EventBus import EventBus
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)

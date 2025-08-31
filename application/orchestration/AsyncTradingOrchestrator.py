@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import configparser
 from typing import Set
 import psutil # Dependency to be added
 
@@ -20,25 +21,42 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 class AsyncTradingOrchestrator:
     """메인 거래 오케스트레이터 - 모든 비동기 컴포넌트 조정"""
 
-    def __init__(self, symbol: str = "BTCUSDT", account_balance: float = 10000.0):
-        self.symbol = symbol
-        self.timeframes = ["1m", "5m", "15m", "1h", "4h", "1d"]
-        self.account_balance = account_balance
+    def __init__(self, config_path: str = 'config.ini'):
+        self._load_config(config_path)
 
         self.event_bus = AsyncEventBus()
         
-        # Initialize components with necessary parameters
+        # Initialize components with necessary parameters from config
         self.market_structure_detector = AsyncStructureBreakDetector(self.event_bus, self.symbol, self.timeframes)
         self.order_block_detector = AsyncOrderBlockDetector(self.event_bus, self.symbol, self.timeframes)
         self.liquidity_detector = AsyncLiquidityDetector(self.event_bus, self.symbol)
         self.fvg_detector = AsyncFVGDetector(self.event_bus, self.symbol, self.timeframes)
         self.time_strategy = AsyncTimeBasedStrategy(self.event_bus)
         self.strategy_coordinator = AsyncStrategyCoordinator(self.event_bus, self.symbol, self.timeframes)
-        self.risk_manager = AsyncRiskManager(self.event_bus, self.account_balance, risk_per_trade=0.01)
+        self.risk_manager = AsyncRiskManager(self.event_bus, self.account_balance, risk_per_trade=self.risk_per_trade)
         self.order_manager = AsyncOrderManager(self.event_bus)
 
         self._main_tasks: Set[asyncio.Task] = set()
         self._is_running = False
+
+    def _load_config(self, config_path: str):
+        """Loads configuration from the .ini file."""
+        config = configparser.ConfigParser()
+        config.read(config_path)
+
+        # Binance API credentials
+        self.api_key = config.get('binance', 'api_key')
+        self.api_secret = config.get('binance', 'api_secret')
+
+        # Trading settings
+        self.symbol = config.get('trading', 'symbol')
+        self.timeframes = [tf.strip() for tf in config.get('trading', 'timeframes').split(',')]
+        self.risk_per_trade = config.getfloat('trading', 'risk_per_trade')
+
+        # Account settings
+        self.account_balance = config.getfloat('account', 'balance')
+        
+        logger.info("Configuration loaded from %s for symbol %s", config_path, self.symbol)
 
     async def start_trading_system(self):
         """전체 거래 시스템 시작"""

@@ -25,7 +25,8 @@ async def main():
     Initializes and runs the orchestrator.
     """
     logger.info("Initializing trading system...")
-    orchestrator = AsyncTradingOrchestrator()
+    # Pass the config file path to the orchestrator
+    orchestrator = AsyncTradingOrchestrator(config_path='config.ini')
 
     try:
         await orchestrator.start_trading_system()

@@ -6,6 +6,7 @@ import psutil # Dependency to be added
 
 from infrastructure.messaging.EventBus import AsyncEventBus
 from infrastructure.binance.AsyncBinanceWebSocketClient import AsyncBinanceWebSocketClient
+from infrastructure.binance.AsyncBinanceRestClient import AsyncBinanceRestClient
 from application.analysis.AsyncStructureBreakDetector import AsyncStructureBreakDetector
 from application.analysis.AsyncOrderBlockDetector import AsyncOrderBlockDetector
 from application.analysis.AsyncLiquidityDetector import AsyncLiquidityDetector
@@ -27,8 +28,11 @@ class AsyncTradingOrchestrator:
 
         self.event_bus = AsyncEventBus()
         
-        # Initialize components with necessary parameters from config
+        # Initialize API Clients
         self.ws_client = AsyncBinanceWebSocketClient(self.event_bus, self.symbol, self.timeframes)
+        self.rest_client = AsyncBinanceRestClient(self.api_key, self.api_secret)
+
+        # Initialize components with necessary parameters from config
         self.market_structure_detector = AsyncStructureBreakDetector(self.event_bus, self.symbol, self.timeframes)
         self.order_block_detector = AsyncOrderBlockDetector(self.event_bus, self.symbol, self.timeframes)
         self.liquidity_detector = AsyncLiquidityDetector(self.event_bus, self.symbol)
@@ -36,7 +40,7 @@ class AsyncTradingOrchestrator:
         self.time_strategy = AsyncTimeBasedStrategy(self.event_bus)
         self.strategy_coordinator = AsyncStrategyCoordinator(self.event_bus, self.symbol, self.timeframes)
         self.risk_manager = AsyncRiskManager(self.event_bus, self.account_balance, risk_per_trade=self.risk_per_trade)
-        self.order_manager = AsyncOrderManager(self.event_bus)
+        self.order_manager = AsyncOrderManager(self.event_bus, self.rest_client)
 
         self._main_tasks: Set[asyncio.Task] = set()
         self._is_running = False
@@ -107,8 +111,9 @@ class AsyncTradingOrchestrator:
         logger.info("Shutting down trading system...")
         self._is_running = False
 
-        # 웹소켓 클라이언트 종료
+        # API 클라이언트 세션 종료
         self.ws_client.stop()
+        await self.rest_client.close_session()
 
         # 모든 진행 중인 주문 취소
         await self.order_manager.cancel_all_orders()

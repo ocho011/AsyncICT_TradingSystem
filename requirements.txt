@@ -1,2 +1,4 @@
 pytz
 psutil
+aiohttp
+websockets

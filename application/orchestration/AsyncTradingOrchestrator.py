@@ -20,15 +20,21 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 class AsyncTradingOrchestrator:
     """메인 거래 오케스트레이터 - 모든 비동기 컴포넌트 조정"""
 
-    def __init__(self):
+    def __init__(self, symbol: str = "BTCUSDT", account_balance: float = 10000.0):
+        self.symbol = symbol
+        self.timeframes = ["1m", "5m", "15m", "1h", "4h", "1d"]
+        self.account_balance = account_balance
+
         self.event_bus = AsyncEventBus()
-        self.market_structure_detector = AsyncStructureBreakDetector(self.event_bus)
-        self.order_block_detector = AsyncOrderBlockDetector(self.event_bus)
-        self.liquidity_detector = AsyncLiquidityDetector(self.event_bus)
-        self.fvg_detector = AsyncFVGDetector(self.event_bus)
+        
+        # Initialize components with necessary parameters
+        self.market_structure_detector = AsyncStructureBreakDetector(self.event_bus, self.symbol, self.timeframes)
+        self.order_block_detector = AsyncOrderBlockDetector(self.event_bus, self.symbol, self.timeframes)
+        self.liquidity_detector = AsyncLiquidityDetector(self.event_bus, self.symbol)
+        self.fvg_detector = AsyncFVGDetector(self.event_bus, self.symbol, self.timeframes)
         self.time_strategy = AsyncTimeBasedStrategy(self.event_bus)
-        self.strategy_coordinator = AsyncStrategyCoordinator(self.event_bus)
-        self.risk_manager = AsyncRiskManager(self.event_bus)
+        self.strategy_coordinator = AsyncStrategyCoordinator(self.event_bus, self.symbol, self.timeframes)
+        self.risk_manager = AsyncRiskManager(self.event_bus, self.account_balance, risk_per_trade=0.01)
         self.order_manager = AsyncOrderManager(self.event_bus)
 
         self._main_tasks: Set[asyncio.Task] = set()
@@ -38,7 +44,7 @@ class AsyncTradingOrchestrator:
         """전체 거래 시스템 시작"""
         try:
             self._is_running = True
-            logger.info("Starting all trading system components...")
+            logger.info("Starting all trading system components for %s...", self.symbol)
 
             # 이벤트 버스 시작
             event_bus_task = asyncio.create_task(self.event_bus.process_events())
@@ -46,10 +52,10 @@ class AsyncTradingOrchestrator:
 
             # 각 컴포넌트 시작
             components_tasks = [
-                asyncio.create_task(self.market_structure_detector.start_multi_timeframe_detection()),
-                asyncio.create_task(self.order_block_detector.start_continuous_detection(["BTCUSDT", "ETHUSDT"], ["5m", "15m", "1h"])),
-                asyncio.create_task(self.liquidity_detector.start_multi_symbol_detection(["BTCUSDT", "ETHUSDT"])),
-                asyncio.create_task(self.fvg_detector.start_multi_timeframe_detection(["BTCUSDT", "ETHUSDT"], ["1m", "5m", "15m"])),
+                asyncio.create_task(self.market_structure_detector.start_detection()),
+                asyncio.create_task(self.order_block_detector.start_detection()),
+                asyncio.create_task(self.liquidity_detector.start_detection()),
+                asyncio.create_task(self.fvg_detector.start_detection()),
                 asyncio.create_task(self.time_strategy.start_time_based_analysis()),
                 asyncio.create_task(self.strategy_coordinator.start_strategy_coordination()),
                 asyncio.create_task(self.risk_manager.start_risk_monitoring()),
@@ -62,7 +68,7 @@ class AsyncTradingOrchestrator:
             health_task = asyncio.create_task(self._monitor_system_health())
             self._main_tasks.add(health_task)
 
-            logger.info("All components started. Trading system is live.")
+            logger.info("All components started. Trading system is live for %s.", self.symbol)
             # 모든 태스크 실행
             await asyncio.gather(*self._main_tasks)
 

@@ -1,91 +1,67 @@
 import asyncio
 import logging
-import time
-from typing import List, Set, Dict, Optional
+from typing import List, Dict, Optional
 from collections import deque
 
 from domain.ports.EventBus import EventBus
 from domain.entities.FairValueGap import AsyncFairValueGap, FVGData
-from domain.events.FVGEvent import FVGEvent
-
-# --- Placeholder Definitions ---
-
-class Candle:
-    def __init__(self, high, low, close, open, timestamp):
-        self.high = high
-        self.low = low
-        self.close = close
-        self.open = open
-        self.timestamp = timestamp
+from domain.events.DataEvents import CandleEvent
+from domain.events.MarketEvents import MarketEvents
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
-
-# --- End of Placeholder Definitions ---
-
 
 class AsyncFVGDetector:
-    def __init__(self, event_bus: EventBus):
+    """Detects Fair Value Gaps from real-time candle events."""
+    def __init__(self, event_bus: EventBus, symbol: str, timeframes: list[str]):
         self.event_bus = event_bus
-        self.active_gaps: Dict[str, List[AsyncFairValueGap]] = {}
-        self._detection_tasks: Set[asyncio.Task] = set()
+        self.symbol = symbol
+        self.timeframes = timeframes
+        self.active_gaps: Dict[str, List[AsyncFairValueGap]] = {tf: [] for tf in timeframes}
+        self.candle_buffers: Dict[str, deque] = {tf: deque(maxlen=3) for tf in timeframes}
 
-    async def start_multi_timeframe_detection(self, symbols: List[str], timeframes: List[str]):
-        """다중 시간대 FVG 탐지 시작"""
-        for symbol in symbols:
-            for timeframe in timeframes:
-                task = asyncio.create_task(
-                    self._detect_fvg_continuously(symbol, timeframe)
-                )
-                self._detection_tasks.add(task)
+    async def start_detection(self):
+        """Subscribes to candle events to start FVG detection."""
+        logger.info("AsyncFVGDetector started for %s on timeframes: %s", self.symbol, self.timeframes)
+        for tf in self.timeframes:
+            topic = f"candle:{self.symbol}:{tf}"
+            await self.event_bus.subscribe(topic, self._handle_candle_event)
 
-    async def _get_candle_stream(self, symbol: str, timeframe: str):
-        # Placeholder for a real-time candle data stream
-        while True:
-            await asyncio.sleep(1) # Simulate receiving a new candle every second
-            yield Candle(high=105, low=95, close=102, open=98, timestamp=time.time())
+    async def _handle_candle_event(self, event: CandleEvent):
+        """Processes each incoming candle to detect FVGs."""
+        if not event.is_closed:
+            return # Process only closed candles to avoid detecting premature FVGs
 
-    async def _detect_three_candle_fvg(self, last_three_candles: List[Candle]) -> Optional[FVGData]:
-        """3-캔들 패턴에서 FVG 탐지"""
-        if len(last_three_candles) < 3:
-            return None
+        buffer = self.candle_buffers[event.timeframe]
+        buffer.append(event)
 
+        if len(buffer) == 3:
+            fvg_data = self._detect_three_candle_fvg(list(buffer))
+
+            if fvg_data:
+                # In a real system, you might want to manage gap instances differently
+                # For now, we just publish an event upon detection.
+                logger.info("FVG Detected on %s %s: High=%.2f, Low=%.2f", 
+                            event.symbol, event.timeframe, fvg_data.high, fvg_data.low)
+                
+                fvg_event = {
+                    "symbol": event.symbol,
+                    "timeframe": event.timeframe,
+                    "gap_high": fvg_data.high,
+                    "gap_low": fvg_data.low,
+                    "timestamp": fvg_data.timestamp
+                }
+                await self.event_bus.publish(MarketEvents.FVG_DETECTED, fvg_event)
+
+    def _detect_three_candle_fvg(self, last_three_candles: List[CandleEvent]) -> Optional[FVGData]:
+        """Detects an FVG from the last three closed candles."""
         first_candle, _, third_candle = last_three_candles
 
         # Bullish FVG: first candle's high is lower than third candle's low
         if first_candle.high < third_candle.low:
-            logger.info("Bullish FVG detected.")
-            return FVGData(high=third_candle.low, low=first_candle.high, timestamp=third_candle.timestamp)
+            return FVGData(high=third_candle.low, low=first_candle.high, timestamp=third_candle.open_time)
 
         # Bearish FVG: first candle's low is higher than third candle's high
         if first_candle.low > third_candle.high:
-            logger.info("Bearish FVG detected.")
-            return FVGData(high=first_candle.low, low=third_candle.high, timestamp=third_candle.timestamp)
+            return FVGData(high=first_candle.low, low=third_candle.high, timestamp=third_candle.open_time)
 
         return None
-
-    async def _detect_fvg_continuously(self, symbol: str, timeframe: str):
-        """지속적인 FVG 탐지"""
-        candle_buffer = deque(maxlen=3)
-
-        async for candle in self._get_candle_stream(symbol, timeframe):
-            candle_buffer.append(candle)
-
-            if len(candle_buffer) == 3:
-                fvg_data = await self._detect_three_candle_fvg(list(candle_buffer))
-
-                if fvg_data:
-                    gap = AsyncFairValueGap(fvg_data, self.event_bus)
-                    await gap.start_monitoring()
-
-                    key = f"{symbol}_{timeframe}"
-                    if key not in self.active_gaps:
-                        self.active_gaps[key] = []
-                    self.active_gaps[key].append(gap)
-
-                    await self.event_bus.publish(FVGEvent(
-                        event_type="NEW_FVG_DETECTED",
-                        symbol=symbol,
-                        timeframe=timeframe,
-                        gap=gap
-                    ))

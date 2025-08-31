@@ -1,23 +1,46 @@
 import asyncio
+import logging
 from typing import Dict
+from collections import deque
 
 from domain.ports.EventBus import EventBus
-from domain.entities.MarketStructure import AsyncMarketStructure
+from domain.entities.MarketStructure import MarketStructure
+from domain.events.DataEvents import CandleEvent
+from domain.events.MarketEvents import MarketEvents
+
+logger = logging.getLogger(__name__)
 
 class AsyncStructureBreakDetector:
-    def __init__(self, event_bus: EventBus): # Depends on the interface
+    """Detects Break of Structure (BOS) and Change of Character (CHoCH) from candle events."""
+    def __init__(self, event_bus: EventBus, symbol: str, timeframes: list[str]):
         self.event_bus = event_bus
-        self.timeframe_structures: Dict[str, AsyncMarketStructure] = {}
+        self.symbol = symbol
+        self.timeframes = timeframes
+        # For each timeframe, maintain a MarketStructure instance
+        self.analyzers: Dict[str, MarketStructure] = {tf: MarketStructure() for tf in timeframes}
 
-    async def start_multi_timeframe_detection(self):
-        """멀티 타임프레임 구조 탐지 시작"""
-        # This is a placeholder implementation.
-        # In a real system, this detector would subscribe to candle events
-        # and use the AsyncMarketStructure entity to perform analysis.
-        # For now, we'll just log that it's running.
-        print("AsyncStructureBreakDetector started.")
-        # The logic from the prompt was flawed because the detector
-        # shouldn't be starting the entity's real-time analysis directly.
-        # The orchestrator should do that.
-        # This class should receive data and use the entity for calculations.
-        await asyncio.sleep(3600) # Sleep for a long time
+    async def start_detection(self):
+        """Subscribes to candle events to start structure detection."""
+        logger.info("AsyncStructureBreakDetector started for %s on timeframes: %s", self.symbol, self.timeframes)
+        for tf in self.timeframes:
+            topic = f"candle:{self.symbol}:{tf}"
+            await self.event_bus.subscribe(topic, self._handle_candle_event)
+
+    async def _handle_candle_event(self, event: CandleEvent):
+        """Processes each incoming candle to detect structure changes."""
+        if not event.is_closed:
+            return # Process only closed candles
+
+        analyzer = self.analyzers[event.timeframe]
+        
+        # 1. Detect Break of Structure (BOS)
+        bos_result = analyzer.detect_break_of_structure(event)
+        if bos_result:
+            logger.info("BOS Detected: %s", bos_result)
+            await self.event_bus.publish(MarketEvents.BOS_DETECTED, bos_result)
+
+        # 2. Detect Change of Character (CHoCH)
+        choch_result = analyzer.detect_change_of_character(event)
+        if choch_result:
+            logger.info("CHoCH Detected: %s", choch_result)
+            await self.event_bus.publish(MarketEvents.CHOCH_DETECTED, choch_result)

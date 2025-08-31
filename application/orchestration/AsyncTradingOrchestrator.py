@@ -5,6 +5,7 @@ from typing import Set
 import psutil # Dependency to be added
 
 from infrastructure.messaging.EventBus import AsyncEventBus
+from infrastructure.binance.AsyncBinanceWebSocketClient import AsyncBinanceWebSocketClient
 from application.analysis.AsyncStructureBreakDetector import AsyncStructureBreakDetector
 from application.analysis.AsyncOrderBlockDetector import AsyncOrderBlockDetector
 from application.analysis.AsyncLiquidityDetector import AsyncLiquidityDetector
@@ -27,6 +28,7 @@ class AsyncTradingOrchestrator:
         self.event_bus = AsyncEventBus()
         
         # Initialize components with necessary parameters from config
+        self.ws_client = AsyncBinanceWebSocketClient(self.event_bus, self.symbol, self.timeframes)
         self.market_structure_detector = AsyncStructureBreakDetector(self.event_bus, self.symbol, self.timeframes)
         self.order_block_detector = AsyncOrderBlockDetector(self.event_bus, self.symbol, self.timeframes)
         self.liquidity_detector = AsyncLiquidityDetector(self.event_bus, self.symbol)
@@ -64,11 +66,14 @@ class AsyncTradingOrchestrator:
             self._is_running = True
             logger.info("Starting all trading system components for %s...", self.symbol)
 
-            # 이벤트 버스 시작
+            # 이벤트 버스 및 웹소켓 클라이언트 시작
             event_bus_task = asyncio.create_task(self.event_bus.process_events())
             self._main_tasks.add(event_bus_task)
+            
+            ws_client_task = asyncio.create_task(self.ws_client.start())
+            self._main_tasks.add(ws_client_task)
 
-            # 각 컴포넌트 시작
+            # 각 분석/실행 컴포넌트 시작
             components_tasks = [
                 asyncio.create_task(self.market_structure_detector.start_detection()),
                 asyncio.create_task(self.order_block_detector.start_detection()),
@@ -101,6 +106,9 @@ class AsyncTradingOrchestrator:
 
         logger.info("Shutting down trading system...")
         self._is_running = False
+
+        # 웹소켓 클라이언트 종료
+        self.ws_client.stop()
 
         # 모든 진행 중인 주문 취소
         await self.order_manager.cancel_all_orders()

@@ -1,72 +1,66 @@
 import asyncio
 import logging
-import time
-from typing import List, Set, Dict
+from typing import List, Dict
 from collections import deque
 
 from domain.ports.EventBus import EventBus
-from domain.entities.OrderBlock import AsyncOrderBlock, Candle, OrderBlockType
-from domain.events.OrderBlockEvent import OrderBlockEvent
+from domain.entities.OrderBlock import OrderBlock, OrderBlockType
+from domain.events.DataEvents import CandleEvent
+from domain.events.MarketEvents import MarketEvents
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
 
 class AsyncOrderBlockDetector:
-    def __init__(self, event_bus: EventBus):
+    """Detects Order Blocks from real-time candle events."""
+    def __init__(self, event_bus: EventBus, symbol: str, timeframes: list[str]):
         self.event_bus = event_bus
-        self.active_blocks: Dict[str, List[AsyncOrderBlock]] = {}
-        self._detection_tasks: Set[asyncio.Task] = set()
+        self.symbol = symbol
+        self.timeframes = timeframes
+        self.candle_buffers: Dict[str, deque] = {tf: deque(maxlen=50) for tf in timeframes}
 
-    async def start_continuous_detection(self, symbols: List[str], timeframes: List[str]):
-        """지속적인 Order Block 탐지 시작"""
-        for symbol in symbols:
-            for timeframe in timeframes:
-                task = asyncio.create_task(
-                    self._detect_order_blocks_continuously(symbol, timeframe)
-                )
-                self._detection_tasks.add(task)
+    async def start_detection(self):
+        """Subscribes to candle events to start Order Block detection."""
+        logger.info("AsyncOrderBlockDetector started for %s on timeframes: %s", self.symbol, self.timeframes)
+        for tf in self.timeframes:
+            topic = f"candle:{self.symbol}:{tf}"
+            await self.event_bus.subscribe(topic, self._handle_candle_event)
 
-    async def _get_candle_stream(self, symbol: str, timeframe: str):
-        # Placeholder for a real-time candle data stream
-        # This would typically connect to a WebSocket feed
-        while True:
-            await asyncio.sleep(1) # Simulate receiving a new candle every second
-            yield Candle(high=105, low=95, timestamp=time.time())
+    async def _handle_candle_event(self, event: CandleEvent):
+        """Processes each incoming candle to detect Order Blocks."""
+        if not event.is_closed:
+            return
 
-    async def _detect_new_order_blocks(self, candle_buffer: List[Candle]) -> List[AsyncOrderBlock]:
-        # Placeholder for the actual detection logic
-        # This would analyze the candle patterns to find order blocks
-        new_blocks = []
-        # Simulate finding a new block occasionally
-        if len(candle_buffer) > 5 and len(candle_buffer) % 10 == 0:
-            new_candle = candle_buffer[-1]
-            # Create a dummy block for demonstration
-            block = AsyncOrderBlock(new_candle, OrderBlockType.BULLISH, self.event_bus)
-            new_blocks.append(block)
-            logger.info(f"New Order Block detected at {new_candle.high}")
-        return new_blocks
+        buffer = self.candle_buffers[event.timeframe]
+        buffer.append(event)
 
+        # A simple placeholder logic for detecting an order block
+        # e.g., a down candle followed by a large up candle
+        if len(buffer) < 3:
+            return
 
-    async def _detect_order_blocks_continuously(self, symbol: str, timeframe: str):
-        """지속적인 Order Block 탐지"""
-        candle_buffer = deque(maxlen=100)
+        ob_result = self._detect_order_block(list(buffer))
+        if ob_result:
+            logger.info("Order Block Detected: %s", ob_result)
+            await self.event_bus.publish(MarketEvents.ORDER_BLOCK_DETECTED, ob_result)
 
-        async for candle in self._get_candle_stream(symbol, timeframe):
-            candle_buffer.append(candle)
+    def _detect_order_block(self, candles: List[CandleEvent]) -> Dict:
+        """A simplified logic to find a bullish order block."""
+        # This is a placeholder. Real logic would be much more complex.
+        c1, c2, c3 = candles[-3], candles[-2], candles[-1]
 
-            # 비동기로 Order Block 탐지
-            new_blocks = await self._detect_new_order_blocks(list(candle_buffer))
+        # Bullish OB: A down candle (c2) followed by a strong up candle (c3)
+        # that breaks the high of the down candle.
+        is_down_candle = c2.close < c2.open
+        is_strong_up_candle = c3.close > c3.open and (c3.close - c3.open) > (c2.open - c2.close) * 1.5
+        breaks_high = c3.close > c2.high
 
-            for block in new_blocks:
-                await block.start_monitoring()
-                key = f"{symbol}_{timeframe}"
-                if key not in self.active_blocks:
-                    self.active_blocks[key] = []
-                self.active_blocks[key].append(block)
-
-                # 새로운 Order Block 이벤트 발행
-                await self.event_bus.publish(OrderBlockEvent(
-                    event_type="NEW_ORDER_BLOCK",
-                    order_block=block,
-                    data={'symbol': symbol, 'timeframe': timeframe}
-                ))
+        if is_down_candle and is_strong_up_candle and breaks_high:
+            return {
+                "symbol": c2.symbol,
+                "timeframe": c2.timeframe,
+                "type": OrderBlockType.BULLISH.name,
+                "high": c2.high,
+                "low": c2.low,
+                "timestamp": c2.open_time
+            }
+        return None

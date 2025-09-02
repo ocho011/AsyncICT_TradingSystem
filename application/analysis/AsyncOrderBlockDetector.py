@@ -4,9 +4,10 @@ from typing import List, Dict
 from collections import deque
 
 from domain.ports.EventBus import EventBus
-from domain.entities.OrderBlock import OrderBlock, OrderBlockType
-from domain.events.DataEvents import CandleEvent
+from domain.entities.OrderBlock import AsyncOrderBlock, OrderBlockType
+from domain.events.DataEvents import CandleEvent, CANDLE_EVENT_TYPE
 from domain.events.MarketEvents import MarketEvents
+from domain.events.OrderBlockEvent import OrderBlockEvent
 
 logger = logging.getLogger(__name__)
 
@@ -21,12 +22,13 @@ class AsyncOrderBlockDetector:
     async def start_detection(self):
         """Subscribes to candle events to start Order Block detection."""
         logger.info("AsyncOrderBlockDetector started for %s on timeframes: %s", self.symbol, self.timeframes)
-        for tf in self.timeframes:
-            topic = f"candle:{self.symbol}:{tf}"
-            await self.event_bus.subscribe(topic, self._handle_candle_event)
+        await self.event_bus.subscribe(CANDLE_EVENT_TYPE, self._handle_candle_event)
 
     async def _handle_candle_event(self, event: CandleEvent):
         """Processes each incoming candle to detect Order Blocks."""
+        if event.symbol != self.symbol or event.timeframe not in self.timeframes:
+            return
+
         if not event.is_closed:
             return
 
@@ -41,7 +43,13 @@ class AsyncOrderBlockDetector:
         ob_result = self._detect_order_block(list(buffer))
         if ob_result:
             logger.info("Order Block Detected: %s", ob_result)
-            await self.event_bus.publish(MarketEvents.ORDER_BLOCK_DETECTED, ob_result)
+            event_to_publish = OrderBlockEvent(
+                event_type=MarketEvents.ORDER_BLOCK_DETECTED.name,
+                symbol=event.symbol,
+                timeframe=event.timeframe,
+                order_block=ob_result
+            )
+            await self.event_bus.publish(event_to_publish)
 
     def _detect_order_block(self, candles: List[CandleEvent]) -> Dict:
         """A simplified logic to find a bullish order block."""

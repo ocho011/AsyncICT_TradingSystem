@@ -4,7 +4,7 @@ import logging
 import websockets
 
 from domain.ports.EventBus import EventBus
-from domain.events.DataEvents import CandleEvent
+from domain.events.DataEvents import CandleEvent, CANDLE_EVENT_TYPE
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +69,7 @@ class AsyncBinanceWebSocketClient:
             if kline_data:
                 timeframe = kline_data['i']
                 candle_event = CandleEvent(
+                    event_type=CANDLE_EVENT_TYPE,
                     symbol=kline_data['s'],
                     timeframe=timeframe,
                     open_time=int(kline_data['t']),
@@ -79,7 +80,7 @@ class AsyncBinanceWebSocketClient:
                     volume=float(kline_data['v']),
                     is_closed=bool(kline_data['x'])
                 )
-                await self.event_bus.publish(f"candle:{candle_event.symbol}:{timeframe}", candle_event)
+                await self.event_bus.publish(candle_event)
                 # logger.debug("Published CandleEvent: %s", candle_event)
 
         except json.JSONDecodeError:

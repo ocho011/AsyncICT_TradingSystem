@@ -32,6 +32,7 @@ class MarketStructureEvent:
 @dataclass
 class PreliminaryTradeDecision:
     """Represents a potential trade identified by the Strategy Coordinator."""
+    event_type: str
     symbol: str
     timeframe: str
     decision_time: float

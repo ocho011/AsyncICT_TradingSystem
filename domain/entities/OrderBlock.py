@@ -5,6 +5,7 @@ from typing import List, Optional, Dict, Set, Any
 # Assuming EventBus interface is what we need
 from domain.ports.EventBus import EventBus
 from domain.events.OrderBlockEvent import OrderBlockEvent
+from enum import Enum
 
 # --- Placeholder Definitions (to be moved or implemented) ---
 
@@ -14,7 +15,7 @@ class Candle:
         self.low = low
         self.timestamp = timestamp
 
-class OrderBlockType:
+class OrderBlockType(Enum):
     BULLISH = "BULLISH"
     BEARISH = "BEARISH"
 

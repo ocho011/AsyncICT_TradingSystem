@@ -5,7 +5,8 @@ from collections import deque
 
 from domain.ports.EventBus import EventBus
 from domain.entities.FairValueGap import AsyncFairValueGap, FVGData
-from domain.events.DataEvents import CandleEvent
+from domain.events.DataEvents import CandleEvent, CANDLE_EVENT_TYPE
+from domain.events.FVGEvent import FVGEvent
 from domain.events.MarketEvents import MarketEvents
 
 logger = logging.getLogger(__name__)
@@ -22,12 +23,13 @@ class AsyncFVGDetector:
     async def start_detection(self):
         """Subscribes to candle events to start FVG detection."""
         logger.info("AsyncFVGDetector started for %s on timeframes: %s", self.symbol, self.timeframes)
-        for tf in self.timeframes:
-            topic = f"candle:{self.symbol}:{tf}"
-            await self.event_bus.subscribe(topic, self._handle_candle_event)
+        await self.event_bus.subscribe(CANDLE_EVENT_TYPE, self._handle_candle_event)
 
     async def _handle_candle_event(self, event: CandleEvent):
         """Processes each incoming candle to detect FVGs."""
+        if event.symbol != self.symbol or event.timeframe not in self.timeframes:
+            return
+
         if not event.is_closed:
             return # Process only closed candles to avoid detecting premature FVGs
 
@@ -43,14 +45,13 @@ class AsyncFVGDetector:
                 logger.info("FVG Detected on %s %s: High=%.2f, Low=%.2f", 
                             event.symbol, event.timeframe, fvg_data.high, fvg_data.low)
                 
-                fvg_event = {
-                    "symbol": event.symbol,
-                    "timeframe": event.timeframe,
-                    "gap_high": fvg_data.high,
-                    "gap_low": fvg_data.low,
-                    "timestamp": fvg_data.timestamp
-                }
-                await self.event_bus.publish(MarketEvents.FVG_DETECTED, fvg_event)
+                event_to_publish = FVGEvent(
+                    event_type=MarketEvents.FVG_DETECTED.name,
+                    gap=fvg_data,
+                    symbol=event.symbol,
+                    timeframe=event.timeframe
+                )
+                await self.event_bus.publish(event_to_publish)
 
     def _detect_three_candle_fvg(self, last_three_candles: List[CandleEvent]) -> Optional[FVGData]:
         """Detects an FVG from the last three closed candles."""

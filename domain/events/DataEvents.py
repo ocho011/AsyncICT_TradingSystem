@@ -1,8 +1,11 @@
 from dataclasses import dataclass
 
+CANDLE_EVENT_TYPE = "CANDLE_EVENT"
+
 @dataclass
 class CandleEvent:
     """Represents a single candlestick data point received from the exchange."""
+    event_type: str
     symbol: str
     timeframe: str
     open_time: int

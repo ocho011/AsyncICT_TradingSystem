@@ -11,6 +11,31 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from application.orchestration.AsyncTradingOrchestrator import AsyncTradingOrchestrator
 
+class ColoredFormatter(logging.Formatter):
+    """A custom formatter to add colors and line numbers to log messages."""
+    
+    GREY = "\x1b[38;20m"
+    YELLOW = "\x1b[33;20m"
+    RED = "\x1b[31;20m"
+    BOLD_RED = "\x1b[31;1m"
+    RESET = "\x1b[0m"
+
+    def __init__(self, fmt):
+        super().__init__()
+        self.fmt = fmt
+        self.FORMATS = {
+            logging.DEBUG: self.GREY + self.fmt + self.RESET,
+            logging.INFO: self.GREY + self.fmt + self.RESET,
+            logging.WARNING: self.YELLOW + self.fmt + self.RESET,
+            logging.ERROR: self.RED + self.fmt + self.RESET,
+            logging.CRITICAL: self.BOLD_RED + self.fmt + self.RESET
+        }
+
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno)
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
+
 def setup_logging(config_path='config.ini'):
     """Sets up logging based on the configuration file."""
     config = configparser.ConfigParser()
@@ -35,19 +60,23 @@ def setup_logging(config_path='config.ini'):
     if logger.hasHandlers():
         logger.handlers.clear()
 
-    # Create formatter
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    # Create formatters
+    file_formatter = logging.Formatter(
+        '%(asctime)s - %(name)s:%(lineno)d - %(levelname)s - %(message)s'
+    )
+    console_format = '%(asctime)s - %(name)s:%(lineno)d - %(levelname)s - %(message)s'
+    colored_formatter = ColoredFormatter(console_format)
 
     # Create console handler
     stream_handler = logging.StreamHandler(sys.stdout)
-    stream_handler.setFormatter(formatter)
+    stream_handler.setFormatter(colored_formatter)
     logger.addHandler(stream_handler)
 
     # Create rotating file handler
     file_handler = logging.handlers.RotatingFileHandler(
         log_file_path, maxBytes=max_bytes, backupCount=backup_count
     )
-    file_handler.setFormatter(formatter)
+    file_handler.setFormatter(file_formatter)
     logger.addHandler(file_handler)
     
     # Get the logger for the current module

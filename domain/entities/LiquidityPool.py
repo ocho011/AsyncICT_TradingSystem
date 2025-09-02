@@ -4,10 +4,11 @@ from typing import List, Optional
 
 from domain.ports.EventBus import EventBus
 from domain.events.LiquidityEvent import LiquidityEvent
+from enum import Enum
 
 # --- Placeholder Definitions ---
 
-class LiquidityType:
+class LiquidityType(Enum):
     BSL = "Buy-side Liquidity"
     SSL = "Sell-side Liquidity"
 

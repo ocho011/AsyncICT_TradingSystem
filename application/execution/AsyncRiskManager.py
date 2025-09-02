@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from typing import Optional, Dict
 
 from domain.ports.EventBus import EventBus
 from domain.events.MarketEvents import MarketEvents, PreliminaryTradeDecision
@@ -7,19 +8,9 @@ from domain.events.MarketEvents import MarketEvents, PreliminaryTradeDecision
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-# Placeholder for a new event type
-from dataclasses import dataclass
 
-@dataclass
-class ApprovedTradeOrder:
-    symbol: str
-    order_type: str # e.g., 'MARKET', 'LIMIT'
-    side: str # e.g., 'BUY', 'SELL'
-    quantity: float
-    entry_price: float | None = None
-    stop_loss: float | None = None
-    take_profit: float | None = None
-    decision_details: dict | None = None
+
+from domain.events.OrderEvents import ApprovedTradeOrder, ApprovedOrderEvent
 
 class AsyncRiskManager:
     """Manages overall portfolio risk, position sizing, and emergency stop-losses."""
@@ -34,7 +25,7 @@ class AsyncRiskManager:
         """Starts monitoring for trade decisions and overall account risk."""
         logger.info("Risk Manager started.")
         await self.event_bus.subscribe(
-            MarketEvents.PRELIMINARY_TRADE_DECISION, 
+            MarketEvents.PRELIMINARY_TRADE_DECISION.name, 
             self._handle_trade_decision
         )
         
@@ -78,9 +69,12 @@ class AsyncRiskManager:
             take_profit=event.details.get('take_profit', 0), # Placeholder
             decision_details=event.details
         )
-
-        await self.event_bus.publish(MarketEvents.APPROVED_TRADE_ORDER, approved_order)
-        logger.info("Published ApprovedTradeOrder event for %s.", event.symbol)
+        event_to_publish = ApprovedOrderEvent(
+            event_type=MarketEvents.APPROVED_TRADE_ORDER.name,
+            order=approved_order
+        )
+        await self.event_bus.publish(event_to_publish)
+        logger.info("Published ApprovedOrderEvent for %s.", event.symbol)
 
     def _calculate_position_size(self, stop_loss_price: float, entry_price: float) -> float:
         """Calculates the position size based on risk per trade."""

@@ -27,9 +27,9 @@ class AsyncStrategyCoordinator:
     async def start_strategy_coordination(self):
         """Starts the process of listening to events and coordinating strategies."""
         logger.info("Strategy Coordinator started for symbol %s.", self.symbol)
-        await self.event_bus.subscribe(MarketEvents.FVG_DETECTED, self._handle_fvg)
-        await self.event_bus.subscribe(MarketEvents.ORDER_BLOCK_DETECTED, self._handle_order_block)
-        await self.event_bus.subscribe(MarketEvents.LIQUIDITY_SWEEP_DETECTED, self._handle_liquidity_sweep)
+        await self.event_bus.subscribe(MarketEvents.FVG_DETECTED.name, self._handle_fvg)
+        await self.event_bus.subscribe(MarketEvents.ORDER_BLOCK_DETECTED.name, self._handle_order_block)
+        await self.event_bus.subscribe(MarketEvents.LIQUIDITY_SWEEP_DETECTED.name, self._handle_liquidity_sweep)
         
         # The main loop can be used for periodic checks or can be removed if purely event-driven
         while True:
@@ -86,6 +86,7 @@ class AsyncStrategyCoordinator:
             
             # Create a preliminary trade decision
             decision_event = PreliminaryTradeDecision(
+                event_type=MarketEvents.PRELIMINARY_TRADE_DECISION.name,
                 symbol=self.symbol,
                 timeframe=timeframe,
                 decision_time=current_time,
@@ -98,7 +99,7 @@ class AsyncStrategyCoordinator:
             )
             
             # Publish the decision for the Risk Manager
-            await self.event_bus.publish(MarketEvents.PRELIMINARY_TRADE_DECISION, decision_event)
+            await self.event_bus.publish(decision_event)
             logger.info("Published PreliminaryTradeDecision event for %s.", self.symbol)
 
             # Clear the events that formed the scenario to avoid re-triggering

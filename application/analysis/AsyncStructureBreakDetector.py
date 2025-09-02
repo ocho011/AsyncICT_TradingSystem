@@ -4,9 +4,9 @@ from typing import Dict
 from collections import deque
 
 from domain.ports.EventBus import EventBus
-from domain.entities.MarketStructure import MarketStructure
-from domain.events.DataEvents import CandleEvent
-from domain.events.MarketEvents import MarketEvents
+from domain.entities.MarketStructure import AsyncMarketStructure
+from domain.events.DataEvents import CandleEvent, CANDLE_EVENT_TYPE
+from domain.events.MarketEvents import MarketEvents, MarketStructureEvent
 
 logger = logging.getLogger(__name__)
 
@@ -17,30 +17,43 @@ class AsyncStructureBreakDetector:
         self.symbol = symbol
         self.timeframes = timeframes
         # For each timeframe, maintain a MarketStructure instance
-        self.analyzers: Dict[str, MarketStructure] = {tf: MarketStructure() for tf in timeframes}
+        self.analyzers: Dict[str, AsyncMarketStructure] = {tf: AsyncMarketStructure(self.event_bus) for tf in timeframes}
 
     async def start_detection(self):
         """Subscribes to candle events to start structure detection."""
         logger.info("AsyncStructureBreakDetector started for %s on timeframes: %s", self.symbol, self.timeframes)
-        for tf in self.timeframes:
-            topic = f"candle:{self.symbol}:{tf}"
-            await self.event_bus.subscribe(topic, self._handle_candle_event)
+        await self.event_bus.subscribe(CANDLE_EVENT_TYPE, self._handle_candle_event)
 
     async def _handle_candle_event(self, event: CandleEvent):
         """Processes each incoming candle to detect structure changes."""
+        if event.symbol != self.symbol or event.timeframe not in self.timeframes:
+            return
+
         if not event.is_closed:
             return # Process only closed candles
 
         analyzer = self.analyzers[event.timeframe]
         
         # 1. Detect Break of Structure (BOS)
-        bos_result = analyzer.detect_break_of_structure(event)
+        bos_result = await analyzer._detect_break_of_structure_async(event)
         if bos_result:
             logger.info("BOS Detected: %s", bos_result)
-            await self.event_bus.publish(MarketEvents.BOS_DETECTED, bos_result)
+            bos_event = MarketStructureEvent(
+                symbol=event.symbol,
+                timeframe=event.timeframe,
+                event_type=MarketEvents.BOS_DETECTED.name,
+                data=bos_result
+            )
+            await self.event_bus.publish(bos_event)
 
         # 2. Detect Change of Character (CHoCH)
-        choch_result = analyzer.detect_change_of_character(event)
+        choch_result = await analyzer._detect_change_of_character_async(event)
         if choch_result:
             logger.info("CHoCH Detected: %s", choch_result)
-            await self.event_bus.publish(MarketEvents.CHOCH_DETECTED, choch_result)
+            choch_event = MarketStructureEvent(
+                symbol=event.symbol,
+                timeframe=event.timeframe,
+                event_type=MarketEvents.CHOCH_DETECTED.name,
+                data=choch_result
+            )
+            await self.event_bus.publish(choch_event)

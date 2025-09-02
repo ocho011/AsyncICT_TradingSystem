@@ -1,30 +1,23 @@
 import asyncio
 import logging
 from dataclasses import dataclass, field
+from typing import Optional, Dict
 
 from domain.ports.EventBus import EventBus
 from domain.events.MarketEvents import MarketEvents
 from infrastructure.binance.AsyncBinanceRestClient import AsyncBinanceRestClient
 
-# Assuming ApprovedTradeOrder is defined elsewhere, e.g., in the RiskManager or a shared events file.
-@dataclass
-class ApprovedTradeOrder:
-    symbol: str
-    order_type: str
-    side: str
-    quantity: float
-    stop_loss: float | None = None
-    take_profit: float | None = None
-    decision_details: dict | None = None
+from domain.events.OrderEvents import ApprovedTradeOrder, ApprovedOrderEvent
 
 @dataclass
 class OrderStateChangeEvent:
+    event_type: str
     order_id: str
     symbol: str
     status: str
     quantity: float
     filled_quantity: float
-    avg_fill_price: float | None = None
+    avg_fill_price: Optional[float] = None
     timestamp: float = field(default_factory=asyncio.get_event_loop().time)
 
 logger = logging.getLogger(__name__)
@@ -39,14 +32,15 @@ class AsyncOrderManager:
     async def start_order_processing(self):
         """Starts listening for approved orders and processes them."""
         logger.info("Order Manager started.")
-        await self.event_bus.subscribe(MarketEvents.APPROVED_TRADE_ORDER, self._handle_approved_order)
+        await self.event_bus.subscribe(MarketEvents.APPROVED_TRADE_ORDER.name, self._handle_approved_order)
         
         while True:
             await self._track_open_orders()
             await asyncio.sleep(15) # Check order statuses every 15 seconds
 
-    async def _handle_approved_order(self, order: ApprovedTradeOrder):
+    async def _handle_approved_order(self, event: ApprovedOrderEvent):
         """Receives an approved order and proceeds to execute it."""
+        order = event.order
         logger.info("Order Manager received an approved order for %s: %s %f", 
                     order.symbol, order.side, order.quantity)
         await self._execute_order(order)
@@ -68,6 +62,7 @@ class AsyncOrderManager:
                 self.active_orders[result['orderId']] = result
                 # Publish an event confirming the order state change
                 order_event = OrderStateChangeEvent(
+                    event_type=MarketEvents.ORDER_STATE_CHANGE.name,
                     order_id=result['orderId'],
                     symbol=result['symbol'],
                     status=result['status'],
@@ -75,7 +70,7 @@ class AsyncOrderManager:
                     filled_quantity=float(result['executedQty']),
                     avg_fill_price=float(result.get('avgPrice', 0.0))
                 )
-                await self.event_bus.publish(MarketEvents.ORDER_STATE_CHANGE, order_event)
+                await self.event_bus.publish(order_event)
             else:
                 logger.error("Failed to place order for %s. No result from API.", order.symbol)
         except Exception as e:
@@ -95,6 +90,7 @@ class AsyncOrderManager:
                     self.active_orders[order_id] = status # Update status
                     # Publish change event
                     order_event = OrderStateChangeEvent(
+                        event_type=MarketEvents.ORDER_STATE_CHANGE.name,
                         order_id=status['orderId'],
                         symbol=status['symbol'],
                         status=status['status'],
@@ -102,7 +98,7 @@ class AsyncOrderManager:
                         filled_quantity=float(status['executedQty']),
                         avg_fill_price=float(status.get('avgPrice', 0.0))
                     )
-                    await self.event_bus.publish(MarketEvents.ORDER_STATE_CHANGE, order_event)
+                    await self.event_bus.publish(order_event)
 
                     if status['status'] in ['FILLED', 'CANCELED', 'EXPIRED']:
                         del self.active_orders[order_id]

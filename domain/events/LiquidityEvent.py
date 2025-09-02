@@ -5,6 +5,8 @@ from typing import Any
 @dataclass
 class LiquidityEvent:
     event_type: str
+    symbol: str
+    timeframe: str
     pool: Any = None
     correlation_data: Any = None
     sweep_data: Any = None

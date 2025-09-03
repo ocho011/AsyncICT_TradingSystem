@@ -85,6 +85,23 @@ class AsyncStrategyCoordinator:
             logger.info("TRADE SCENARIO MET on %s for %s!", timeframe, self.symbol)
             
             # Create a preliminary trade decision
+            ob_details = last_ob_event.order_block
+            side = 'BUY' if ob_details.get('type') == 'BULLISH' else 'SELL'
+            
+            if side == 'BUY':
+                entry_price = ob_details.get('high')
+                stop_loss = ob_details.get('low')
+            else: # SELL
+                entry_price = ob_details.get('low')
+                stop_loss = ob_details.get('high')
+
+            # For now, take_profit can be a simple multiple of the risk
+            if entry_price and stop_loss:
+                risk_per_unit = abs(entry_price - stop_loss)
+                take_profit = entry_price + 3 * risk_per_unit if side == 'BUY' else entry_price - 3 * risk_per_unit
+            else:
+                take_profit = 0
+            
             decision_event = PreliminaryTradeDecision(
                 event_type=MarketEvents.PRELIMINARY_TRADE_DECISION.name,
                 symbol=self.symbol,
@@ -92,6 +109,10 @@ class AsyncStrategyCoordinator:
                 decision_time=current_time,
                 scenario_name="LiquiditySweep_OB_FVG_Confirmation",
                 details={
+                    'side': side,
+                    'entry_price': entry_price,
+                    'stop_loss': stop_loss,
+                    'take_profit': take_profit,
                     "liquidity_event": last_liquidity_event,
                     "fvg_event": last_fvg_event,
                     "ob_event": last_ob_event

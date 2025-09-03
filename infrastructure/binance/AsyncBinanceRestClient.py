@@ -37,12 +37,27 @@ class AsyncBinanceRestClient:
             'X-MBX-APIKEY': self.api_key
         }
 
+        request_kwargs = {'headers': headers}
+        
+        # For GET/DELETE, signature is in query params.
+        # For POST/PUT, signature is in the body.
+        if method.upper() in ['GET', 'DELETE']:
+            request_kwargs['params'] = params
+        else:
+            request_kwargs['data'] = params
+
         try:
-            async with self.session.request(method, url, headers=headers, params=params) as response:
-                response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
+            async with self.session.request(method, url, **request_kwargs) as response:
+                if response.status >= 400:
+                    error_details = await response.json()
+                    logger.error(
+                        "API request failed: %s, message='%s', url='%s'",
+                        response.status, error_details.get('msg', ''), response.url
+                    )
+                    response.raise_for_status()
                 return await response.json()
         except aiohttp.ClientError as e:
-            logger.error("API request failed: %s", e)
+            logger.error("API request failed: %s, %s", e.__class__.__name__, e)
             return None
 
     async def place_order(self, params: dict):

@@ -26,7 +26,10 @@ class AsyncBinanceRestClient:
         """Makes a signed HTTP request to the Binance API."""
         if params is None:
             params = {}
-        
+
+        # Store original params for logging, before adding signature
+        original_params = params.copy()
+
         params['timestamp'] = int(time.time() * 1000)
         query_string = urlencode(params)
         signature = self._generate_signature(query_string)
@@ -47,17 +50,18 @@ class AsyncBinanceRestClient:
             request_kwargs['data'] = params
 
         try:
+            logger.info("Sending API request to '%s' with params: %s", url, original_params)
             async with self.session.request(method, url, **request_kwargs) as response:
                 if response.status >= 400:
                     error_details = await response.json()
                     logger.error(
-                        "API request failed: %s, message='%s', url='%s'",
-                        response.status, error_details.get('msg', ''), response.url
+                        "API request failed: %s, message='%s', url='%s', params=%s",
+                        response.status, error_details.get('msg', ''), response.url, original_params
                     )
                     response.raise_for_status()
                 return await response.json()
         except aiohttp.ClientError as e:
-            logger.error("API request failed: %s, %s", e.__class__.__name__, e)
+            logger.error("API request failed: %s, %s, params=%s", e.__class__.__name__, e, original_params)
             return None
 
     async def place_order(self, params: dict):
@@ -79,6 +83,17 @@ class AsyncBinanceRestClient:
         """Gets all open orders for a symbol."""
         params = {'symbol': symbol}
         return await self._signed_request("GET", "/fapi/v1/openOrders", params)
+
+    async def get_account_info(self):
+        """Gets account information including balance and available margin."""
+        return await self._signed_request("GET", "/fapi/v2/account")
+
+    async def get_position_info(self, symbol: str = None):
+        """Gets position information. If symbol is None, returns all positions."""
+        params = {}
+        if symbol:
+            params['symbol'] = symbol
+        return await self._signed_request("GET", "/fapi/v2/positionRisk", params)
 
     async def close_session(self):
         """Closes the aiohttp client session."""

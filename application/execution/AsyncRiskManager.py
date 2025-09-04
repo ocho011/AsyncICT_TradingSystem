@@ -4,11 +4,10 @@ from typing import Optional, Dict
 
 from domain.ports.EventBus import EventBus
 from domain.events.MarketEvents import MarketEvents, PreliminaryTradeDecision
+from domain.events.AccountEvents import AccountUpdateEvent, ACCOUNT_UPDATE_EVENT_TYPE
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
-
-
 
 from domain.events.OrderEvents import ApprovedTradeOrder, ApprovedOrderEvent
 
@@ -25,36 +24,52 @@ class AsyncRiskManager:
         self.current_positions = {}
 
     async def start_risk_monitoring(self):
-        """Starts monitoring for trade decisions and overall account risk."""
+        """Starts monitoring for trade decisions and account updates."""
         logger.info("Risk Manager started.")
         await self.event_bus.subscribe(
             MarketEvents.PRELIMINARY_TRADE_DECISION.name, 
             self._handle_trade_decision
         )
-        
-        while True:
-            # This would periodically monitor account equity, drawdown, margin, etc.
-            await self._monitor_account_health()
-            await asyncio.sleep(10) # Check account health every 10 seconds
+        await self.event_bus.subscribe(
+            ACCOUNT_UPDATE_EVENT_TYPE, 
+            self._handle_account_update
+        )
+
+    async def _handle_account_update(self, event: AccountUpdateEvent):
+        """Handles real-time account updates from the WebSocket stream."""
+        logger.info("Processing account update event.")
+        for balance in event.balances:
+            if balance.asset == 'USDT': # Assuming USDT is the collateral asset
+                self.available_margin = balance.cross_wallet_balance
+                self.account_balance = balance.wallet_balance
+                logger.debug("Account balance updated - Available margin: %f, Total balance: %f",
+                           self.available_margin, self.account_balance)
+
+        new_positions = {}
+        for position in event.positions:
+            if position.position_amount != 0:
+                new_positions[position.symbol] = position.position_amount
+        self.current_positions = new_positions
+        logger.debug("Current positions updated: %s", self.current_positions)
 
     async def _handle_trade_decision(self, event: PreliminaryTradeDecision):
         """Handles a preliminary trade decision from the coordinator."""
         logger.info("Risk Manager received a trade decision for %s.", event.symbol)
 
-        # 1. Update account information
-        await self._update_account_info()
+        # Account information is now updated in real-time via WebSocket.
+        # The check will use the latest available state.
 
-        # 2. Assess overall account risk
+        # 1. Assess overall account risk
         if not await self._assess_account_risk():
             logger.warning("Trade for %s rejected due to account risk level.", event.symbol)
             return
 
-        # 3. Check available margin before calculating position size
+        # 2. Check available margin before calculating position size
         if not await self._check_margin_availability(event.symbol):
             logger.warning("Trade for %s rejected due to insufficient margin.", event.symbol)
             return
 
-        # 4. Calculate position size based on current market price and available margin
+        # 3. Calculate position size based on current market price and available margin
         position_size = await self._calculate_safe_position_size(event.symbol)
         if position_size <= 0:
             logger.warning("Trade for %s rejected due to invalid position size.", event.symbol)
@@ -62,7 +77,7 @@ class AsyncRiskManager:
 
         logger.info("Trade for %s approved with position size: %f", event.symbol, position_size)
 
-        # 5. Create and publish the approved order event
+        # 4. Create and publish the approved order event
         approved_order = ApprovedTradeOrder(
             symbol=event.symbol,
             order_type='MARKET', # Example
@@ -78,31 +93,6 @@ class AsyncRiskManager:
         )
         await self.event_bus.publish(event_to_publish)
         logger.info("Published ApprovedOrderEvent for %s.", event.symbol)
-
-    async def _update_account_info(self):
-        """Updates account information from the exchange."""
-        if not self.rest_client:
-            logger.warning("No REST client available for account info update.")
-            return
-            
-        try:
-            account_info = await self.rest_client.get_account_info()
-            if account_info:
-                self.available_margin = float(account_info.get('availableBalance', 0))
-                self.account_balance = float(account_info.get('totalWalletBalance', self.account_balance))
-                logger.debug("Account updated - Available margin: %f, Total balance: %f", 
-                           self.available_margin, self.account_balance)
-                
-                # Update current positions
-                positions = await self.rest_client.get_position_info()
-                if positions:
-                    self.current_positions = {
-                        pos['symbol']: float(pos['positionAmt']) 
-                        for pos in positions 
-                        if float(pos['positionAmt']) != 0
-                    }
-        except Exception as e:
-            logger.error("Failed to update account info: %s", e)
 
     async def _check_margin_availability(self, symbol: str) -> bool:
         """Checks if there's sufficient margin for a new trade."""
@@ -174,10 +164,6 @@ class AsyncRiskManager:
         except Exception as e:
             logger.error("Failed to assess account risk: %s", e)
             return False
-
-    async def _monitor_account_health(self):
-        """Monitors account health and updates margin information."""
-        await self._update_account_info()
 
     async def emergency_close_all_positions(self):
         logger.warning("EMERGENCY: Closing all positions!")

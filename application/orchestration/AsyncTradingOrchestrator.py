@@ -29,8 +29,8 @@ class AsyncTradingOrchestrator:
         self.event_bus = AsyncEventBus()
         
         # Initialize API Clients
-        self.ws_client = AsyncBinanceWebSocketClient(self.event_bus, self.symbol, self.timeframes)
         self.rest_client = AsyncBinanceRestClient(self.api_key, self.api_secret)
+        self.ws_client = AsyncBinanceWebSocketClient(self.event_bus, self.symbol, self.timeframes, self.rest_client)
 
         # Initialize components with necessary parameters from config
         self.market_structure_detector = AsyncStructureBreakDetector(self.event_bus, self.symbol, self.timeframes)

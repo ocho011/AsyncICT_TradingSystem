@@ -95,6 +95,10 @@ class AsyncBinanceRestClient:
             params['symbol'] = symbol
         return await self._signed_request("GET", "/fapi/v2/positionRisk", params)
 
+    async def get_listen_key(self):
+        """Requests a listen key for the user data stream."""
+        return await self._signed_request("POST", "/fapi/v1/listenKey")
+
     async def close_session(self):
         """Closes the aiohttp client session."""
         if self.session and not self.session.closed:

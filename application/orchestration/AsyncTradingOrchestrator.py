@@ -39,7 +39,7 @@ class AsyncTradingOrchestrator:
         self.fvg_detector = AsyncFVGDetector(self.event_bus, self.symbol, self.timeframes)
         self.time_strategy = AsyncTimeBasedStrategy(self.event_bus)
         self.strategy_coordinator = AsyncStrategyCoordinator(self.event_bus, self.symbol, self.timeframes)
-        self.risk_manager = AsyncRiskManager(self.event_bus, self.account_balance, risk_per_trade=self.risk_per_trade)
+        self.risk_manager = AsyncRiskManager(self.event_bus, self.account_balance, risk_per_trade=self.risk_per_trade, rest_client=self.rest_client)
         self.order_manager = AsyncOrderManager(self.event_bus, self.rest_client)
 
         self._main_tasks: Set[asyncio.Task] = set()

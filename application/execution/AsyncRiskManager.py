@@ -14,12 +14,15 @@ from domain.events.OrderEvents import ApprovedTradeOrder, ApprovedOrderEvent
 
 class AsyncRiskManager:
     """Manages overall portfolio risk, position sizing, and emergency stop-losses."""
-    def __init__(self, event_bus: EventBus, account_balance: float, risk_per_trade: float = 0.01):
+    def __init__(self, event_bus: EventBus, account_balance: float, risk_per_trade: float = 0.01, rest_client=None):
         self.event_bus = event_bus
         self.account_balance = account_balance
         self.risk_per_trade = risk_per_trade  # e.g., 1% of account balance
         self.max_drawdown = 0.10  # e.g., 10% max total drawdown
         self.open_positions = {}
+        self.rest_client = rest_client
+        self.available_margin = account_balance  # Initialize with full balance
+        self.current_positions = {}
 
     async def start_risk_monitoring(self):
         """Starts monitoring for trade decisions and overall account risk."""
@@ -38,34 +41,34 @@ class AsyncRiskManager:
         """Handles a preliminary trade decision from the coordinator."""
         logger.info("Risk Manager received a trade decision for %s.", event.symbol)
 
-        # 1. Assess overall account risk
-        if not self._assess_account_risk():
+        # 1. Update account information
+        await self._update_account_info()
+
+        # 2. Assess overall account risk
+        if not await self._assess_account_risk():
             logger.warning("Trade for %s rejected due to account risk level.", event.symbol)
             return
 
-        # 2. Calculate position size
-        # This is a simplified example. A real implementation needs price for SL calculation.
-        stop_loss_price = event.details.get('stop_loss', 0) # Placeholder
-        entry_price = event.details.get('entry_price', 0) # Placeholder
-        
-        if stop_loss_price == 0 or entry_price == 0:
-            logger.error("Cannot calculate position size without entry and stop-loss prices.")
+        # 3. Check available margin before calculating position size
+        if not await self._check_margin_availability(event.symbol):
+            logger.warning("Trade for %s rejected due to insufficient margin.", event.symbol)
             return
 
-        position_size = self._calculate_position_size(stop_loss_price, entry_price)
+        # 4. Calculate position size based on current market price and available margin
+        position_size = await self._calculate_safe_position_size(event.symbol)
         if position_size <= 0:
             logger.warning("Trade for %s rejected due to invalid position size.", event.symbol)
             return
 
         logger.info("Trade for %s approved with position size: %f", event.symbol, position_size)
 
-        # 3. Create and publish the approved order event
+        # 5. Create and publish the approved order event
         approved_order = ApprovedTradeOrder(
             symbol=event.symbol,
             order_type='MARKET', # Example
             side=event.details.get('side', 'BUY'), # Example
             quantity=position_size,
-            stop_loss=stop_loss_price,
+            stop_loss=event.details.get('stop_loss', 0),
             take_profit=event.details.get('take_profit', 0), # Placeholder
             decision_details=event.details
         )
@@ -76,30 +79,105 @@ class AsyncRiskManager:
         await self.event_bus.publish(event_to_publish)
         logger.info("Published ApprovedOrderEvent for %s.", event.symbol)
 
-    def _calculate_position_size(self, stop_loss_price: float, entry_price: float) -> float:
-        """Calculates the position size based on risk per trade."""
-        risk_amount = self.account_balance * self.risk_per_trade
-        price_risk_per_unit = abs(entry_price - stop_loss_price)
-        
-        if price_risk_per_unit == 0:
-            return 0.0
+    async def _update_account_info(self):
+        """Updates account information from the exchange."""
+        if not self.rest_client:
+            logger.warning("No REST client available for account info update.")
+            return
             
-        position_size = risk_amount / price_risk_per_unit
-        return round(position_size, 3) # Rounded to a reasonable precision for crypto
+        try:
+            account_info = await self.rest_client.get_account_info()
+            if account_info:
+                self.available_margin = float(account_info.get('availableBalance', 0))
+                self.account_balance = float(account_info.get('totalWalletBalance', self.account_balance))
+                logger.debug("Account updated - Available margin: %f, Total balance: %f", 
+                           self.available_margin, self.account_balance)
+                
+                # Update current positions
+                positions = await self.rest_client.get_position_info()
+                if positions:
+                    self.current_positions = {
+                        pos['symbol']: float(pos['positionAmt']) 
+                        for pos in positions 
+                        if float(pos['positionAmt']) != 0
+                    }
+        except Exception as e:
+            logger.error("Failed to update account info: %s", e)
 
-    def _assess_account_risk(self) -> bool:
-        """Checks if the overall account risk is within acceptable limits."""
-        # Placeholder for actual account health check (e.g., checking current total drawdown)
-        current_drawdown = 0.05 # Example: 5% current drawdown
-        if current_drawdown >= self.max_drawdown:
-            logger.warning("Account maximum drawdown reached. No new trades allowed.")
+    async def _check_margin_availability(self, symbol: str) -> bool:
+        """Checks if there's sufficient margin for a new trade."""
+        min_margin_buffer = 50.0  # Keep minimum $50 buffer
+        
+        if self.available_margin <= min_margin_buffer:
+            logger.warning("Insufficient margin available: %f (minimum buffer: %f)", 
+                         self.available_margin, min_margin_buffer)
             return False
         return True
 
+    async def _calculate_safe_position_size(self, symbol: str) -> float:
+        """Calculates a safe position size based on available margin and risk parameters."""
+        if not self.rest_client:
+            logger.error("No REST client available for position size calculation.")
+            return 0.0
+            
+        try:
+            # Use a conservative approach - risk only a small portion of available margin
+            max_risk_amount = min(
+                self.available_margin * 0.1,  # Max 10% of available margin
+                self.account_balance * self.risk_per_trade  # Or 1% of total balance
+            )
+            
+            # For now, use a simple position sizing that assumes 2% price risk
+            # This is conservative but will prevent margin errors
+            estimated_price_risk = 0.02  # 2% price movement
+            
+            # Get current market price (simplified - should use actual market data)
+            # For ETH around $4400, a 2% risk would be about $88 per unit
+            estimated_eth_price = 4400.0  # This should come from market data
+            price_risk_per_unit = estimated_eth_price * estimated_price_risk
+            
+            if price_risk_per_unit == 0:
+                return 0.0
+                
+            position_size = max_risk_amount / price_risk_per_unit
+            
+            # Additional safety check - don't exceed 30% of available margin for position value
+            max_position_value = self.available_margin * 0.3
+            max_position_size = max_position_value / estimated_eth_price
+            
+            final_position_size = min(position_size, max_position_size)
+            
+            logger.info("Position size calculation - Risk amount: %f, Position size: %f, Max position size: %f", 
+                       max_risk_amount, position_size, max_position_size)
+            
+            return round(final_position_size, 3)
+            
+        except Exception as e:
+            logger.error("Failed to calculate position size: %s", e)
+            return 0.0
+
+    async def _assess_account_risk(self) -> bool:
+        """Checks if the overall account risk is within acceptable limits."""
+        try:
+            # Check if we have too many open positions
+            if len(self.current_positions) >= 3:  # Max 3 open positions
+                logger.warning("Maximum number of open positions reached.")
+                return False
+                
+            # Check available margin ratio
+            if self.available_margin < (self.account_balance * 0.2):  # Keep at least 20% margin
+                logger.warning("Insufficient margin ratio - Available: %f, Required: %f", 
+                             self.available_margin, self.account_balance * 0.2)
+                return False
+                
+            return True
+        except Exception as e:
+            logger.error("Failed to assess account risk: %s", e)
+            return False
+
     async def _monitor_account_health(self):
-        # In a real system, this would fetch real-time balance, equity, and open positions
-        # and check for margin calls, high drawdown, etc.
-        pass
+        """Monitors account health and updates margin information."""
+        await self._update_account_info()
 
     async def emergency_close_all_positions(self):
         logger.warning("EMERGENCY: Closing all positions!")

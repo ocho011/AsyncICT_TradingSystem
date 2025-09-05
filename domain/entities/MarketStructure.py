@@ -33,7 +33,7 @@ logging.basicConfig(level=logging.INFO)
 # --- End of Placeholder Definitions ---
 
 
-class AsyncMarketStructure:
+class AsyncMarketStructureAnalyzer:
     def __init__(self, event_bus: EventBus): # Depends on the interface
         self.swing_highs: List[SwingPoint] = []
         self.swing_lows: List[SwingPoint] = []

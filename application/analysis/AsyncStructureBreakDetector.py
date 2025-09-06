@@ -17,7 +17,7 @@ class AsyncStructureBreakDetector:
         self.symbol = symbol
         self.timeframes = timeframes
         # For each timeframe, maintain a MarketStructure instance
-        self.analyzers: Dict[str, AsyncMarketStructureAnalyzer] = {tf: AsyncMarketStructureAnalyzer(self.event_bus) for tf in timeframes}
+        self.analyzers: Dict[str, AsyncMarketStructureAnalyzer] = {tf: AsyncMarketStructureAnalyzer() for tf in timeframes}
 
     async def start_detection(self):
         """Subscribes to candle events to start structure detection."""

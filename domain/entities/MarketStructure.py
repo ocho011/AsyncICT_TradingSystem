@@ -3,10 +3,9 @@ import logging
 from typing import List, Set, Optional, Dict
 from collections import deque
 
-# Import from our new modules
-# Assuming the project root is in the PYTHONPATH
 from domain.ports.EventBus import EventBus
 from domain.events.MarketEvents import MarketStructureEvent
+from domain.events.DataEvents import CandleEvent # Import CandleEvent
 
 # --- Placeholder Definitions (to be moved later) ---
 
@@ -17,9 +16,6 @@ class TrendDirection:
     UNKNOWN = "UNKNOWN"
     BULLISH = "BULLISH"
     BEARISH = "BEARISH"
-
-class Candle:
-    pass
 
 class BOS:
     pass
@@ -34,11 +30,10 @@ logging.basicConfig(level=logging.INFO)
 
 
 class AsyncMarketStructureAnalyzer:
-    def __init__(self, event_bus: EventBus): # Depends on the interface
+    def __init__(self):
         self.swing_highs: List[SwingPoint] = []
         self.swing_lows: List[SwingPoint] = []
         self.current_trend: TrendDirection = TrendDirection.UNKNOWN
-        self.event_bus = event_bus
         self._analysis_tasks: Set[asyncio.Task] = set()
 
     async def start_real_time_analysis(self, symbols: List[str], timeframes: List[str]):
@@ -53,9 +48,10 @@ class AsyncMarketStructureAnalyzer:
     async def _get_candle_stream(self, symbol: str, timeframe: str):
         # This is a placeholder async generator
         # In a real implementation, this would connect to a WebSocket
+        # In a real implementation, this would connect to a WebSocket, and yield CandleEvent
         for i in range(10):
             await asyncio.sleep(1)
-            yield Candle() # Yielding a dummy Candle object
+            yield # Yielding a dummy Candle object
 
     async def _continuous_structure_analysis(self, symbol: str, timeframe: str):
         """지속적인 구조 분석 (백그라운드 코루틴)"""
@@ -66,29 +62,25 @@ class AsyncMarketStructureAnalyzer:
                     # BOS 탐지
                     bos_result = await self._detect_break_of_structure_async(candle)
                     if bos_result:
-                        await self.event_bus.publish(MarketStructureEvent(
-                            symbol=symbol, timeframe=timeframe,
-                            event_type="BOS_DETECTED", data=bos_result
-                        ))
+                        # Publishing responsibility moved to the detector
+                        pass
 
                     # CHoCH 탐지
                     choch_result = await self._detect_change_of_character_async(candle)
                     if choch_result:
-                        await self.event_bus.publish(MarketStructureEvent(
-                            symbol=symbol, timeframe=timeframe,
-                            event_type="CHOCH_DETECTED", data=choch_result
-                        ))
+                        # Publishing responsibility moved to the detector
+                        pass
 
             except Exception as e:
                 logger.error(f"Structure analysis error for {symbol}_{timeframe}: {e}")
                 await asyncio.sleep(5)  # 에러 복구 대기
 
-    def _calculate_bos(self, candle: Candle) -> Optional[BOS]:
+    def _calculate_bos(self, candle: CandleEvent) -> Optional[BOS]:
         # Placeholder for CPU-intensive calculation
         print("Calculating BOS...")
         return BOS() # Dummy result
 
-    async def _detect_break_of_structure_async(self, candle: Candle) -> Optional[BOS]:
+    async def _detect_break_of_structure_async(self, candle: CandleEvent) -> Optional[BOS]:
         """비동기 BOS 탐지"""
         # CPU 집약적 작업을 executor에서 실행
         loop = asyncio.get_event_loop()
@@ -96,16 +88,14 @@ class AsyncMarketStructureAnalyzer:
             None, self._calculate_bos, candle
         )
 
-    def _calculate_choch(self, candle: Candle) -> Optional[CHoCH]:
+    def _calculate_choch(self, candle: CandleEvent) -> Optional[CHoCH]:
         # Placeholder for CPU-intensive calculation
         print("Calculating CHoCH...")
         return CHoCH() # Dummy result
 
-    async def _detect_change_of_character_async(self, candle: Candle) -> Optional[CHoCH]:
+    async def _detect_change_of_character_async(self, candle: CandleEvent) -> Optional[CHoCH]:
         """비동기 CHoCH 탐지"""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
             None, self._calculate_choch, candle
         )
-
-
